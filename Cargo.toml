@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "cuckatoo-core",
+    "cuckatoo-miner",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Cuckatoo Rust Miner"]
+description = "Rust implementation of Cuckatoo mining algorithm"
+license = "MIT"
+repository = "https://github.com/example/cuckatoo-rust-miner"
+
+[workspace.dependencies]
+clap = { version = "4.4", features = ["derive"] }
+thiserror = "1.0"

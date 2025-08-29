@@ -1,0 +1,13 @@
+[package]
+name = "cuckatoo-miner"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+cuckatoo-core = { path = "../cuckatoo-core" }
+clap.workspace = true
+thiserror.workspace = true
