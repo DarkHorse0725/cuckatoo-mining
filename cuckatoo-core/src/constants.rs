@@ -1,39 +1,66 @@
-// Solution size for Cuckatoo cycle
-pub const SOLUTION_SIZE: usize = 42;
+use std::env;
 
-// Edge bits range validation
-pub const MIN_EDGE_BITS: u32 = 10;
-pub const MAX_EDGE_BITS: u32 = 32;
+/// Default cycle length for Cuckatoo (configurable at runtime)
+pub const DEFAULT_CYCLE_LENGTH: usize = 42;
 
-// Bitmap unit width (64 bits)
+/// Get the cycle length from environment variable or use default
+pub fn get_cycle_length() -> usize {
+    env::var("CYCLE_LENGTH")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_CYCLE_LENGTH)
+}
+
+/// Solution size (configurable)
+pub fn solution_size() -> usize {
+    get_cycle_length()
+}
+
+/// Minimum edge bits (expanded range)
+pub const MIN_EDGE_BITS: u32 = 4;
+
+/// Maximum edge bits (expanded range)
+pub const MAX_EDGE_BITS: u32 = 63;
+
+/// Bitmap unit width in bits
 pub const BITMAP_UNIT_WIDTH: usize = 64;
 
-// Bits in a byte
+/// Number of bits in a byte
 pub const BITS_IN_A_BYTE: usize = 8;
 
-// Edge number of components (index, u_node, v_node)
-pub const EDGE_NUMBER_OF_COMPONENTS: usize = 3;
+/// Edge number of components
+pub const EDGE_NUMBER_OF_COMPONENTS: usize = 2;
 
-// SipHash constants
-pub const SIPHASH_KEYS_SIZE: usize = 4;
-pub const SIP_ROUND_ROTATION: u32 = 21;
+/// SipHash keys size
+pub const SIPHASH_KEYS_SIZE: usize = 16;
 
-/// Calculate the number of edges based on edge bits
+/// SipHash round rotation constants
+pub const SIP_ROUND_ROTATION: [u32; 4] = [13, 16, 17, 21];
+
+/// Calculate number of edges based on edge bits
 pub fn number_of_edges(edge_bits: u32) -> u64 {
     1u64 << edge_bits
 }
 
-/// Calculate the node mask based on edge bits
-pub fn node_mask(edge_bits: u32) -> u64 {
-    number_of_edges(edge_bits) - 1
+/// Calculate node mask based on edge bits
+pub fn node_mask(edge_bits: u32) -> u32 {
+    (1u32 << edge_bits) - 1
 }
 
-/// Calculate the edges bitmap size based on edge bits
-pub fn edges_bitmap_size(edge_bits: u32) -> u64 {
-    number_of_edges(edge_bits) / BITMAP_UNIT_WIDTH as u64
+/// Calculate edges bitmap size based on edge bits
+pub fn edges_bitmap_size(edge_bits: u32) -> usize {
+    let edges_count = number_of_edges(edge_bits);
+    ((edges_count + (BITMAP_UNIT_WIDTH as u64 - 1)) / BITMAP_UNIT_WIDTH as u64) as usize
 }
 
-/// Validate edge bits
-pub fn validate_edge_bits(edge_bits: u32) -> bool {
-    edge_bits >= MIN_EDGE_BITS && edge_bits <= MAX_EDGE_BITS
+/// Validate edge bits range
+pub fn validate_edge_bits(edge_bits: u32) -> Result<(), String> {
+    if edge_bits < MIN_EDGE_BITS || edge_bits > MAX_EDGE_BITS {
+        Err(format!(
+            "Edge bits must be between {} and {}, got {}",
+            MIN_EDGE_BITS, MAX_EDGE_BITS, edge_bits
+        ))
+    } else {
+        Ok(())
+    }
 }

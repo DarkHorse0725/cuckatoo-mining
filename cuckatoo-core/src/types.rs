@@ -1,7 +1,7 @@
-use crate::constants::*;
+use crate::constants::get_cycle_length;
 
-/// Represents an edge in the Cuckatoo graph
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Edge in the Cuckatoo graph
+#[derive(Debug, Clone, PartialEq)]
 pub struct Edge {
     pub index: u32,
     pub u_node: u32,
@@ -18,42 +18,53 @@ impl Edge {
     }
 }
 
-/// Represents a node connection link for cycle detection
-#[derive(Debug, Clone)]
+/// Node connection link for building adjacency lists
+#[derive(Debug, Clone, PartialEq)]
 pub struct NodeConnectionLink {
-    pub previous_link: Option<Box<NodeConnectionLink>>,
     pub node: u32,
     pub edge_index: u32,
 }
 
 impl NodeConnectionLink {
     pub fn new(node: u32, edge_index: u32) -> Self {
-        Self {
-            previous_link: None,
-            node,
-            edge_index,
-        }
+        Self { node, edge_index }
     }
 }
 
-/// Represents a solution found by the cycle verifier
-#[derive(Debug, Clone)]
+/// Solution containing cycle edges
+#[derive(Debug, Clone, PartialEq)]
 pub struct Solution {
-    pub edges: [u32; SOLUTION_SIZE],
+    pub edges: Vec<u32>,
 }
 
 impl Solution {
-    pub fn new(edges: [u32; SOLUTION_SIZE]) -> Self {
+    pub fn new(edges: [u32; 42]) -> Self {
+        Self {
+            edges: edges.to_vec(),
+        }
+    }
+
+    /// Create a solution with configurable cycle length
+    pub fn with_cycle_length(edges: Vec<u32>) -> Self {
+        let cycle_length = get_cycle_length();
+        if edges.len() != cycle_length {
+            panic!("Solution must have exactly {} edges, got {}", cycle_length, edges.len());
+        }
         Self { edges }
     }
 
-    /// Sort the solution edges in ascending order
+    /// Sort the edges for consistent representation
     pub fn sort(&mut self) {
         self.edges.sort();
     }
+
+    /// Get the cycle length of this solution
+    pub fn cycle_length(&self) -> usize {
+        self.edges.len()
+    }
 }
 
-/// Configuration for the miner
+/// Mining configuration
 #[derive(Debug, Clone)]
 pub struct MinerConfig {
     pub edge_bits: u32,
@@ -61,8 +72,18 @@ pub struct MinerConfig {
     pub tuning: bool,
 }
 
-/// Mining modes
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl MinerConfig {
+    pub fn new(edge_bits: u32, mode: MiningMode, tuning: bool) -> Self {
+        Self {
+            edge_bits,
+            mode,
+            tuning,
+        }
+    }
+}
+
+/// Mining mode
+#[derive(Debug, Clone, PartialEq)]
 pub enum MiningMode {
     Lean,
     Mean,

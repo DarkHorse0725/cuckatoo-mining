@@ -68,7 +68,7 @@ impl LeanTrimmer {
                 
                 // Keep edge if both nodes have degree > 1
                 if *u_degree > 1 && *v_degree > 1 {
-                    new_edges.push(*edge);
+                    new_edges.push(edge.clone());
                 } else {
                     // Remove edge and update degrees
                     edge_bitmap.clear_bit(edge.index as u64);

@@ -10,7 +10,7 @@ use std::time::Instant;
 #[command(name = "cuckatoo-miner")]
 #[command(about = "Rust implementation of Cuckatoo mining algorithm")]
 struct Args {
-    /// Number of edge bits (10-32)
+    /// Number of edge bits (4-63)
     #[arg(long, short, default_value = "12")]
     edge_bits: u32,
 
@@ -54,8 +54,8 @@ fn main() {
     let args = Args::parse();
 
     // Validate edge bits
-    if !validate_edge_bits(args.edge_bits) {
-        eprintln!("Error: edge-bits must be between {} and {}", MIN_EDGE_BITS, MAX_EDGE_BITS);
+    if let Err(e) = validate_edge_bits(args.edge_bits) {
+        eprintln!("Error: {}", e);
         std::process::exit(1);
     }
 
@@ -110,7 +110,7 @@ fn run_miner(config: MinerConfig) -> Result<(), Box<dyn std::error::Error>> {
     // Search for cycles
     println!("Searching for cycles...");
     let searching_start = Instant::now();
-    let verifier = CycleVerifier::new(config.edge_bits);
+    let verifier = CycleVerifier::new(config.edge_bits).unwrap();
     let solutions = verifier.find_cycles(&trimmed_edges);
     let searching_time = searching_start.elapsed();
     println!("Found {} solutions in {:?}", solutions.len(), searching_time);

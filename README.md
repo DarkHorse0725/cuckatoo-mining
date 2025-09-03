@@ -19,15 +19,15 @@ This is a Cargo workspace with two crates:
 
 ## Features
 
-### Milestone 1 - CPU "Lean" Baseline ✅
+### Milestone 1 - CPU "Lean" Baseline 🚧 (In Progress)
 
 - ✅ Cargo workspace with `cuckatoo-core` and `cuckatoo-miner` crates
 - ✅ Header→edge generation using SipHash-2-4
 - ✅ Lean edge bitmap and node degree bitmap implementation
 - ✅ 42-round trim loop for edge reduction
-- ✅ Cycle verifier for 42-cycle detection
+- ✅ Cycle verifier for 42-cycle detection (currently being debugged)
 - ✅ CLI with parity to README wording:
-  - `--edge-bits` parameter (10-32)
+  - `--edge-bits` parameter (4-63, configurable via CYCLE_LENGTH env var)
   - `--mode lean` (with support for mean/slean)
   - `--tuning` for offline mode
   - Timing output showing Searching time vs Trimming time
@@ -52,7 +52,7 @@ cargo test
 cargo build --release
 
 # Run the miner
-cargo run --bin cuckatoo-miner -- --tuning --edge-bits 12 --mode lean
+cargo run -- --tuning --edge-bits 12 --mode lean
 ```
 
 ## Usage
@@ -61,20 +61,36 @@ cargo run --bin cuckatoo-miner -- --tuning --edge-bits 12 --mode lean
 
 ```bash
 # Run with default settings (edge-bits=12, mode=lean)
-cargo run --bin cuckatoo-miner
+cargo run
 
 # Run in tuning mode with custom edge bits
-cargo run --bin cuckatoo-miner -- --tuning --edge-bits 16 --mode lean
+cargo run -- --tuning --edge-bits 16 --mode lean
 
 # Show help
-cargo run --bin cuckatoo-miner -- --help
+cargo run -- --help
 ```
 
 ### Command Line Options
 
-- `--edge-bits, -e`: Number of edge bits (10-32, default: 12)
+- `--edge-bits, -e`: Number of edge bits (4-63, default: 12)
 - `--mode, -m`: Mining mode (lean/mean/slean, default: lean)
 - `--tuning, -t`: Enable tuning mode (offline, no stratum connection)
+
+### Working Examples
+
+```bash
+# Test with small edge-bits (fast, low memory)
+cargo run -- --edge-bits 4 --mode lean
+
+# Test with medium edge-bits (moderate performance)
+cargo run -- --edge-bits 12 --mode lean
+
+# Test with larger edge-bits (slower, more memory)
+cargo run -- --edge-bits 19 --mode lean
+
+# Test tuning mode
+cargo run -- --tuning --edge-bits 12 --mode lean
+```
 
 ### Example Output
 
@@ -139,14 +155,17 @@ cargo test -- --nocapture
 The CLI can be tested with various parameters:
 
 ```bash
-# Test small graphs
-cargo run --bin cuckatoo-miner -- --tuning --edge-bits 10 --mode lean
+# Test small graphs (fast, reliable)
+cargo run -- --edge-bits 4 --mode lean
 
-# Test larger graphs
-cargo run --bin cuckatoo-miner -- --tuning --edge-bits 16 --mode lean
+# Test medium graphs (moderate performance)
+cargo run -- --edge-bits 12 --mode lean
+
+# Test larger graphs (slower, more memory)
+cargo run -- --edge-bits 16 --mode lean
 
 # Test different modes
-cargo run --bin cuckatoo-miner -- --tuning --edge-bits 12 --mode mean
+cargo run -- --tuning --edge-bits 12 --mode lean
 ```
 
 ## Performance
@@ -157,6 +176,31 @@ Current performance characteristics (on typical hardware):
 - **Lean Trimming**: ~200ms for 4096 edges (42 rounds)
 - **Cycle Search**: ~12ms for trimmed graph
 - **Memory Usage**: Linear with number of edges
+
+### Memory Considerations
+
+⚠️ **Important**: Higher edge-bits require significant memory:
+- `edge-bits 4-16`: Safe, low memory usage
+- `edge-bits 17-20`: Moderate memory usage
+- `edge-bits 21+`: High memory usage, may crash on systems with <32GB RAM
+
+## Current Status
+
+### What Works ✅
+- Edge generation with SipHash-2-4
+- Lean trimming algorithm
+- CLI interface and timing
+- Basic cycle detection framework
+
+### What's Being Debugged 🚧
+- Cycle detection algorithm (finding real cycles vs fake ones)
+- Memory efficiency for high edge-bits
+- Solution validation
+
+### Known Issues ⚠️
+- Cycle detection sometimes finds invalid solutions
+- Memory usage scales exponentially with edge-bits
+- Some edge-bits combinations may crash due to memory limits
 
 ## Future Milestones
 
