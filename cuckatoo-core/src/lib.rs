@@ -1,13 +1,49 @@
-pub mod constants;
-pub mod siphash;
-pub mod bitmap;
-pub mod trimming;
-pub mod cycle_verifier;
-pub mod types;
+//! Cuckatoo Core - Core algorithms and data types for Cuckatoo mining
+//! 
+//! This crate provides the foundational algorithms for Cuckatoo cycle finding:
+//! - Header to edge generation using SipHash-2-4
+//! - Lean edge trimming with bitmap-based approach
+//! - Cycle verification for 42-cycles
+//! - Performance timing and benchmarking
 
-pub use constants::*;
-pub use siphash::*;
-pub use bitmap::*;
-pub use trimming::*;
-pub use cycle_verifier::*;
+pub mod types;
+pub mod hashing;
+pub mod trimming;
+pub mod verification;
+pub mod timing;
+
 pub use types::*;
+pub use hashing::*;
+pub use trimming::*;
+pub use verification::*;
+pub use timing::*;
+
+/// Result type for Cuckatoo operations
+pub type Result<T> = std::result::Result<T, CuckatooError>;
+
+/// Main error type for Cuckatoo operations
+#[derive(Debug)]
+pub enum CuckatooError {
+    InvalidEdgeBits(u32),
+    HashingError(String),
+    TrimmingError(String),
+    VerificationError(String),
+    MemoryError(String),
+    InternalError(String),
+}
+
+impl std::fmt::Display for CuckatooError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CuckatooError::InvalidEdgeBits(bits) => write!(f, "Invalid edge bits: {}", bits),
+            CuckatooError::HashingError(msg) => write!(f, "Hashing failed: {}", msg),
+            CuckatooError::TrimmingError(msg) => write!(f, "Trimming failed: {}", msg),
+            CuckatooError::VerificationError(msg) => write!(f, "Verification failed: {}", msg),
+            CuckatooError::MemoryError(msg) => write!(f, "Memory allocation failed: {}", msg),
+            CuckatooError::InternalError(msg) => write!(f, "Internal error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for CuckatooError {}
+

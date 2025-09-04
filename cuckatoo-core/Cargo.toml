@@ -3,9 +3,10 @@ name = "cuckatoo-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-description.workspace = true
+description = "Core Cuckatoo algorithms and data types"
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-thiserror.workspace = true
+
+[dev-dependencies]

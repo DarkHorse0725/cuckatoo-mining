@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     "cuckatoo-core",
     "cuckatoo-miner",
@@ -7,11 +8,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["Cuckatoo Rust Miner"]
-description = "Rust implementation of Cuckatoo mining algorithm"
+authors = ["Cuckatoo Rust Team"]
+description = "Rust implementation of Cuckatoo Reference Miner"
 license = "MIT"
-repository = "https://github.com/example/cuckatoo-rust-miner"
-
-[workspace.dependencies]
-clap = { version = "4.4", features = ["derive"] }
-thiserror = "1.0"
+repository = "https://github.com/exmaple/cuckatoo-rust/miner"

@@ -1,114 +1,213 @@
-use crate::constants::get_cycle_length;
+//! Core data types for Cuckatoo mining
+
+use std::fmt;
 
 /// Edge in the Cuckatoo graph
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Edge {
-    pub index: u32,
-    pub u_node: u32,
-    pub v_node: u32,
+    /// First node of the edge
+    pub u: Node,
+    /// Second node of the edge
+    pub v: Node,
 }
 
 impl Edge {
-    pub fn new(index: u32, u_node: u32, v_node: u32) -> Self {
-        Self {
-            index,
-            u_node,
-            v_node,
+    /// Create a new edge
+    pub fn new(u: Node, v: Node) -> Self {
+        Self { u, v }
+    }
+    
+    /// Get the other node given one node
+    pub fn other(&self, node: Node) -> Option<Node> {
+        if self.u == node {
+            Some(self.v)
+        } else if self.v == node {
+            Some(self.u)
+        } else {
+            None
         }
     }
-}
-
-/// Node connection link for building adjacency lists
-#[derive(Debug, Clone, PartialEq)]
-pub struct NodeConnectionLink {
-    pub node: u32,
-    pub edge_index: u32,
-}
-
-impl NodeConnectionLink {
-    pub fn new(node: u32, edge_index: u32) -> Self {
-        Self { node, edge_index }
+    
+    /// Check if this edge contains the given node
+    pub fn contains(&self, node: Node) -> bool {
+        self.u == node || self.v == node
     }
 }
 
-/// Solution containing cycle edges
-#[derive(Debug, Clone, PartialEq)]
-pub struct Solution {
-    pub edges: Vec<u32>,
-}
-
-impl Solution {
-    pub fn new(edges: [u32; 42]) -> Self {
-        Self {
-            edges: edges.to_vec(),
-        }
-    }
-
-    /// Create a solution with configurable cycle length
-    pub fn with_cycle_length(edges: Vec<u32>) -> Self {
-        let cycle_length = get_cycle_length();
-        if edges.len() != cycle_length {
-            panic!("Solution must have exactly {} edges, got {}", cycle_length, edges.len());
-        }
-        Self { edges }
-    }
-
-    /// Sort the edges for consistent representation
-    pub fn sort(&mut self) {
-        self.edges.sort();
-    }
-
-    /// Get the cycle length of this solution
-    pub fn cycle_length(&self) -> usize {
-        self.edges.len()
+impl fmt::Display for Edge {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.u, self.v)
     }
 }
 
-/// Mining configuration
+/// Node in the Cuckatoo graph
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Node(pub u64);
+
+impl Node {
+    /// Create a new node
+    pub fn new(value: u64) -> Self {
+        Self(value)
+    }
+    
+    /// Get the node value
+    pub fn value(&self) -> u64 {
+        self.0
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Header for mining (input to edge generation)
 #[derive(Debug, Clone)]
-pub struct MinerConfig {
+pub struct Header {
+    /// Header bytes
+    pub bytes: Vec<u8>,
+    /// Nonce for mining
+    pub nonce: u64,
+}
+
+impl Header {
+    /// Create a new header
+    pub fn new(bytes: Vec<u8>, nonce: u64) -> Self {
+        Self { bytes, nonce }
+    }
+    
+    /// Get header bytes
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+    
+    /// Get nonce
+    pub fn nonce(&self) -> u64 {
+        self.nonce
+    }
+}
+
+/// Configuration for Cuckatoo mining
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// Number of edge bits (determines graph size)
     pub edge_bits: u32,
-    pub mode: MiningMode,
+    /// Number of trimming rounds
+    pub trimming_rounds: u32,
+    /// Trimming mode
+    pub mode: TrimmingMode,
+    /// Whether to run in tuning mode (offline)
     pub tuning: bool,
 }
 
-impl MinerConfig {
-    pub fn new(edge_bits: u32, mode: MiningMode, tuning: bool) -> Self {
+impl Config {
+    /// Create a new configuration
+    pub fn new(edge_bits: u32) -> Self {
         Self {
             edge_bits,
-            mode,
-            tuning,
+            trimming_rounds: 90, // Default from C++ miner
+            mode: TrimmingMode::Lean,
+            tuning: false,
         }
+    }
+    
+    /// Validate the configuration
+    pub fn validate(&self) -> Result<(), crate::CuckatooError> {
+        if self.edge_bits < 10 || self.edge_bits > 32 {
+            return Err(crate::CuckatooError::InvalidEdgeBits(self.edge_bits));
+        }
+        Ok(())
+    }
+    
+    /// Calculate the number of edges based on edge bits
+    pub fn edge_count(&self) -> u64 {
+        1 << self.edge_bits
+    }
+    
+    /// Calculate the number of nodes based on edge bits
+    pub fn node_count(&self) -> u64 {
+        1 << (self.edge_bits - 1)
     }
 }
 
-/// Mining mode
-#[derive(Debug, Clone, PartialEq)]
-pub enum MiningMode {
+/// Trimming mode for edge trimming
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrimmingMode {
+    /// Lean trimming (most memory efficient)
     Lean,
+    /// Mean trimming (fastest)
     Mean,
+    /// Slean trimming (balanced)
     Slean,
 }
 
-impl std::str::FromStr for MiningMode {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "lean" => Ok(MiningMode::Lean),
-            "mean" => Ok(MiningMode::Mean),
-            "slean" => Ok(MiningMode::Slean),
-            _ => Err(format!("Unknown mining mode: {}", s)),
+impl fmt::Display for TrimmingMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TrimmingMode::Lean => write!(f, "lean"),
+            TrimmingMode::Mean => write!(f, "mean"),
+            TrimmingMode::Slean => write!(f, "slean"),
         }
     }
 }
 
-impl std::fmt::Display for MiningMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MiningMode::Lean => write!(f, "lean"),
-            MiningMode::Mean => write!(f, "mean"),
-            MiningMode::Slean => write!(f, "slean"),
+impl std::str::FromStr for TrimmingMode {
+    type Err = crate::CuckatooError;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "lean" => Ok(TrimmingMode::Lean),
+            "mean" => Ok(TrimmingMode::Mean),
+            "slean" => Ok(TrimmingMode::Slean),
+            _ => Err(crate::CuckatooError::InternalError(
+                format!("Unknown trimming mode: {}", s)
+            )),
+        }
+    }
+}
+
+/// Performance metrics for mining operations
+#[derive(Debug, Clone)]
+pub struct PerformanceMetrics {
+    /// Time spent searching (CPU)
+    pub searching_time: f64,
+    /// Time spent trimming (GPU/CPU)
+    pub trimming_time: f64,
+    /// Total graphs processed
+    pub graphs_processed: u64,
+    /// Solutions found
+    pub solutions_found: u64,
+    /// Mining rate (graphs per second)
+    pub mining_rate: f64,
+    /// Nodes processed (for compatibility)
+    pub nodes_processed: u64,
+}
+
+impl PerformanceMetrics {
+    /// Create new performance metrics
+    pub fn new() -> Self {
+        Self {
+            searching_time: 0.0,
+            trimming_time: 0.0,
+            graphs_processed: 0,
+            solutions_found: 0,
+            mining_rate: 0.0,
+            nodes_processed: 0,
+        }
+    }
+    
+    /// Calculate total time
+    pub fn total_time(&self) -> f64 {
+        self.searching_time + self.trimming_time
+    }
+    
+    /// Calculate efficiency ratio
+    pub fn efficiency_ratio(&self) -> f64 {
+        if self.trimming_time > 0.0 {
+            self.searching_time / self.trimming_time
+        } else {
+            0.0
         }
     }
 }
