@@ -8,26 +8,29 @@ use std::collections::HashMap;
 /// This implements the same hashing algorithm used in the C++ reference miner
 /// to generate edges from headers and nonces.
 pub struct SipHash {
-    /// SipHash key (fixed for Cuckatoo)
-    key: [u64; 2],
+    /// SipHash key (256-bit for Cuckatoo)
+    key: [u64; 4],
 }
 
 impl SipHash {
     /// Create a new SipHash instance with the default Cuckatoo key
     pub fn new() -> Self {
-        // Default key used in Cuckatoo (can be made configurable)
+        // Default 256-bit key used in Cuckatoo
         Self {
-            key: [0x736f6d6570736575, 0x646f72616e646f6d],
+            key: [
+                0x736f6d6570736575, 0x646f72616e646f6d,
+                0x6c7967656e657261, 0x7465646279746573
+            ],
         }
     }
     
     /// Create a new SipHash instance with custom key
-    pub fn with_key(key: [u64; 2]) -> Self {
+    pub fn with_key(key: [u64; 4]) -> Self {
         Self { key }
     }
     
     /// Get the SipHash key
-    pub fn get_key(&self) -> [u64; 2] {
+    pub fn get_key(&self) -> [u64; 4] {
         self.key
     }
     
@@ -46,13 +49,16 @@ impl SipHash {
         let mut edges = Vec::with_capacity(edge_count as usize);
         let mut edge_map = HashMap::new();
         
-        // Generate edges using SipHash-2-4
+        // Generate edges using SipHash-2-4 according to Cuckatoo specification
         for i in 0..edge_count {
-            let hash = self.siphash24(&header.bytes, header.nonce, i);
+            // V_i_0 = siphash24(K, 2*i) % N
+            let hash_u = self.siphash24(&header.bytes, header.nonce, 2 * i);
+            // V_i_1 = siphash24(K, 2*i+1) % N  
+            let hash_v = self.siphash24(&header.bytes, header.nonce, 2 * i + 1);
             
-            // Extract two node indices from the hash
-            let u = Node::new(hash & (node_count - 1));
-            let v = Node::new((hash >> 32) & (node_count - 1));
+            // Extract node indices from the hashes
+            let u = Node::new(hash_u & (node_count - 1));
+            let v = Node::new(hash_v & (node_count - 1));
             
             // Ensure u < v for consistent edge representation
             let edge = if u.value() < v.value() {
@@ -83,8 +89,8 @@ impl SipHash {
     fn siphash24(&self, data: &[u8], nonce: u64, edge_index: u64) -> u64 {
         let mut v0 = self.key[0];
         let mut v1 = self.key[1];
-        let mut v2 = 0x6c7967656e657261;
-        let mut v3 = 0x7465646279746573;
+        let mut v2 = self.key[2];
+        let mut v3 = self.key[3];
         
         // XOR with nonce and edge index
         v3 ^= nonce;
@@ -180,7 +186,7 @@ mod tests {
     
     #[test]
     fn test_siphash_custom_key() {
-        let key = [0x1234567890abcdef, 0xfedcba0987654321];
+        let key = [0x1234567890abcdef, 0xfedcba0987654321, 0x1111111111111111, 0x2222222222222222];
         let hasher = SipHash::with_key(key);
         assert_eq!(hasher.key, key);
     }

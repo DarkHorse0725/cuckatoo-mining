@@ -27,17 +27,16 @@ impl CycleVerifier {
     /// Find a 42-cycle in the given edges
     /// 
     /// This is the main method used by the CLI
-    pub fn find_42_cycle(&mut self, edges: &[Edge]) -> Result<Option<Vec<Node>>> {
+    pub fn find_42_cycle(&mut self, edges: &[Edge]) -> Result<Option<Vec<Edge>>> {
         self.verify_cycle(edges)
     }
     
     /// Verify if edges contain a 42-cycle
     /// 
     /// This implements the same algorithm as the C++ reference miner:
-    /// 1. Build adjacency list from edges
-    /// 2. Use DFS to find cycles of length 42
-    /// 3. Return the first valid cycle found
-    pub fn verify_cycle(&mut self, edges: &[Edge]) -> Result<Option<Vec<Node>>> {
+    /// 1. Use DFS to find cycles of length 42 (sequence of incident edges)
+    /// 2. Return the first valid cycle found
+    pub fn verify_cycle(&mut self, edges: &[Edge]) -> Result<Option<Vec<Edge>>> {
         let start_time = Instant::now();
         
         if edges.len() < 42 {
@@ -45,12 +44,9 @@ impl CycleVerifier {
             return Ok(None);
         }
         
-        // Build adjacency list
-        let adjacency = self.build_adjacency_list(edges);
-        
-        // Try to find a 42-cycle starting from each node
-        for &start_node in adjacency.keys() {
-            if let Some(cycle) = self.find_cycle_from_node(start_node, &adjacency, 42) {
+        // Try to find a 42-cycle starting from each edge
+        for (i, &start_edge) in edges.iter().enumerate() {
+            if let Some(cycle) = self.find_cycle_from_edge(start_edge, edges, 42, i) {
                 let searching_time = start_time.elapsed().as_secs_f64();
                 self.metrics.searching_time = searching_time;
                 self.metrics.solutions_found = 1;
@@ -72,6 +68,7 @@ impl CycleVerifier {
     }
     
     /// Build adjacency list from edges
+    #[allow(dead_code)]
     fn build_adjacency_list(&self, edges: &[Edge]) -> HashMap<Node, Vec<Node>> {
         let mut adjacency: HashMap<Node, Vec<Node>> = HashMap::new();
         
@@ -84,6 +81,7 @@ impl CycleVerifier {
     }
     
     /// Find a cycle of specified length starting from a node
+    #[allow(dead_code)]
     fn find_cycle_from_node(
         &self,
         start_node: Node,
@@ -104,6 +102,7 @@ impl CycleVerifier {
     }
     
     /// DFS to find cycles
+    #[allow(dead_code)]
     fn dfs_cycle(
         &self,
         current: Node,
@@ -156,22 +155,140 @@ impl CycleVerifier {
         None
     }
     
+    /// Find a cycle of specified length starting from an edge
+    fn find_cycle_from_edge(
+        &self,
+        start_edge: Edge,
+        edges: &[Edge],
+        target_length: usize,
+        start_index: usize,
+    ) -> Option<Vec<Edge>> {
+        let mut used_edges = HashSet::new();
+        let mut path = Vec::new();
+        
+        // Start the cycle from the start edge
+        self.dfs_edge_cycle(start_edge, start_edge, edges, &mut used_edges, &mut path, target_length, start_index)
+    }
+    
+    /// DFS helper for edge-based cycle finding
+    /// Tracks the current endpoint to ensure proper connectivity
+    fn dfs_edge_cycle(
+        &self,
+        current_edge: Edge,
+        start_edge: Edge,
+        edges: &[Edge],
+        used_edges: &mut HashSet<usize>,
+        path: &mut Vec<Edge>,
+        target_length: usize,
+        start_index: usize,
+    ) -> Option<Vec<Edge>> {
+        if path.len() == target_length {
+            // Check if we can return to the start edge
+            let last_edge = path[path.len() - 1];
+            
+            // Find which endpoint of the last edge should connect to the start edge
+            let connecting_endpoint = if path.len() == 1 {
+                // This shouldn't happen, but handle it
+                last_edge.v
+            } else {
+                // Find which endpoint of last_edge connects to the previous edge
+                let prev_edge = path[path.len() - 2];
+                if prev_edge.u == last_edge.u || prev_edge.v == last_edge.u {
+                    last_edge.v  // Connect from v endpoint
+                } else {
+                    last_edge.u  // Connect from u endpoint
+                }
+            };
+            
+            // Check if start_edge connects to the connecting_endpoint
+            if start_edge.u == connecting_endpoint || start_edge.v == connecting_endpoint {
+                return Some(path.clone());
+            }
+            return None;
+        }
+        
+        if path.len() > target_length {
+            return None;
+        }
+        
+        // Find the index of current edge
+        let current_index = edges.iter().position(|&e| e == current_edge)?;
+        used_edges.insert(current_index);
+        path.push(current_edge);
+        
+        // Find the endpoint that connects to the next edge
+        let connecting_endpoint = if path.len() == 1 {
+            // For the first edge, we can connect from either endpoint
+            current_edge.v
+        } else {
+            // For subsequent edges, find which endpoint of current_edge connects to the previous edge
+            let prev_edge = path[path.len() - 2];
+            if prev_edge.u == current_edge.u || prev_edge.v == current_edge.u {
+                current_edge.v  // Connect from v endpoint
+            } else {
+                current_edge.u  // Connect from u endpoint
+            }
+        };
+        
+        // Find edges that connect to the connecting_endpoint
+        for (i, &edge) in edges.iter().enumerate() {
+            if !used_edges.contains(&i) {
+                // Check if this edge connects to our connecting_endpoint
+                if edge.u == connecting_endpoint || edge.v == connecting_endpoint {
+                    if let Some(result) = self.dfs_edge_cycle(edge, start_edge, edges, used_edges, path, target_length, start_index) {
+                        return Some(result);
+                    }
+                }
+            }
+        }
+        
+        used_edges.remove(&current_index);
+        path.pop();
+        None
+    }
+    
+    /// Check if two edges are incident (share an endpoint)
+    #[allow(dead_code)]
+    fn edges_are_incident(&self, edge1: Edge, edge2: Edge) -> bool {
+        edge1.u == edge2.u || edge1.u == edge2.v || edge1.v == edge2.u || edge1.v == edge2.v
+    }
+    
+    /// Check if two edges are properly connected (share exactly one endpoint)
+    /// This ensures that consecutive edges in a cycle form a proper path
+    fn edges_are_properly_connected(&self, edge1: Edge, edge2: Edge) -> bool {
+        // Two edges are properly connected if they share exactly one endpoint
+        let shares_u_u = edge1.u == edge2.u;
+        let shares_u_v = edge1.u == edge2.v;
+        let shares_v_u = edge1.v == edge2.u;
+        let shares_v_v = edge1.v == edge2.v;
+        
+        // Count how many endpoints are shared
+        let shared_count = (shares_u_u as u8) + (shares_u_v as u8) + (shares_v_u as u8) + (shares_v_v as u8);
+        
+        // Must share exactly one endpoint
+        shared_count == 1
+    }
+    
     /// Verify a specific cycle is valid
-    pub fn verify_specific_cycle(&self, cycle: &[Node], edges: &[Edge]) -> bool {
-        if cycle.len() < 3 {
+    /// In Cuckatoo, a cycle is a sequence of edges where consecutive edges share an endpoint
+    pub fn verify_specific_cycle(&self, cycle_edges: &[Edge], all_edges: &[Edge]) -> bool {
+        if cycle_edges.len() < 3 {
             return false;
         }
         
-        // Check that consecutive nodes in the cycle are connected by edges
-        for i in 0..cycle.len() {
-            let current = cycle[i];
-            let next = cycle[(i + 1) % cycle.len()];
+        // Check that all cycle edges exist in the edge set
+        for edge in cycle_edges {
+            if !all_edges.contains(edge) {
+                return false;
+            }
+        }
+        
+        // Check that consecutive edges are properly connected
+        for i in 0..cycle_edges.len() {
+            let current_edge = cycle_edges[i];
+            let next_edge = cycle_edges[(i + 1) % cycle_edges.len()];
             
-            // Create edge in both possible orders and check if either exists
-            let edge1 = Edge::new(current, next);
-            let edge2 = Edge::new(next, current);
-            
-            if !edges.contains(&edge1) && !edges.contains(&edge2) {
+            if !self.edges_are_properly_connected(current_edge, next_edge) {
                 return false;
             }
         }
@@ -239,6 +356,7 @@ impl OptimizedCycleVerifier {
     }
     
     /// Build adjacency list from edges
+    #[allow(dead_code)]
     fn build_adjacency_list(&self, edges: &[Edge]) -> HashMap<Node, Vec<Node>> {
         let mut adjacency: HashMap<Node, Vec<Node>> = HashMap::new();
         
@@ -404,17 +522,21 @@ mod tests {
             Edge::new(Node::new(2), Node::new(0)),
         ];
         
+        // Valid 3-cycle using edges
         let cycle = vec![
-            Node::new(0),
-            Node::new(1),
-            Node::new(2),
+            Edge::new(Node::new(0), Node::new(1)),
+            Edge::new(Node::new(1), Node::new(2)),
+            Edge::new(Node::new(2), Node::new(0)),
         ];
         
         // This should verify a 3-cycle
         assert!(verifier.verify_specific_cycle(&cycle, &edges));
         
-        // Invalid cycle
-        let invalid_cycle = vec![Node::new(0), Node::new(1)];
+        // Invalid cycle (only 2 edges, not connected)
+        let invalid_cycle = vec![
+            Edge::new(Node::new(0), Node::new(1)),
+            Edge::new(Node::new(2), Node::new(3)),
+        ];
         assert!(!verifier.verify_specific_cycle(&invalid_cycle, &edges));
     }
     
@@ -526,3 +648,4 @@ pub mod test_fixtures {
         edges
     }
 }
+
