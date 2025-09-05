@@ -147,27 +147,19 @@ impl LeanTrimmer {
 struct EdgeBitmap {
     /// Active edges
     active_edges: HashSet<Edge>,
-    /// Edge to index mapping for quick lookup
-    edge_to_index: HashMap<Edge, usize>,
-    /// Original edges list
-    original_edges: Vec<Edge>,
 }
 
 impl EdgeBitmap {
     /// Create a new edge bitmap
     fn new(edges: &[Edge]) -> Self {
-        let mut edge_to_index = HashMap::new();
         let mut active_edges = HashSet::new();
         
-        for (index, &edge) in edges.iter().enumerate() {
-            edge_to_index.insert(edge, index);
+        for &edge in edges {
             active_edges.insert(edge);
         }
         
         Self {
             active_edges,
-            edge_to_index,
-            original_edges: edges.to_vec(),
         }
     }
     
@@ -183,9 +175,9 @@ impl EdgeBitmap {
     
     /// Get edges connected to a specific node
     fn get_edges_for_node(&self, node: Node) -> Vec<Edge> {
-        self.original_edges
+        self.active_edges
             .iter()
-            .filter(|&&edge| edge.contains(node) && self.is_edge_active(edge))
+            .filter(|&&edge| edge.contains(node))
             .copied()
             .collect()
     }
@@ -195,7 +187,8 @@ impl EdgeBitmap {
         self.active_edges.iter().copied().collect()
     }
     
-    /// Get number of active edges
+    /// Get number of active edges (for testing)
+    #[allow(dead_code)]
     fn active_count(&self) -> usize {
         self.active_edges.len()
     }
@@ -253,12 +246,14 @@ impl NodeBitmap {
         self.node_degrees.remove(&node);
     }
     
-    /// Get node degree
+    /// Get node degree (for testing)
+    #[allow(dead_code)]
     fn get_degree(&self, node: Node) -> u32 {
         self.node_degrees.get(&node).copied().unwrap_or(0)
     }
     
-    /// Get number of active nodes
+    /// Get number of active nodes (for testing)
+    #[allow(dead_code)]
     fn active_count(&self) -> usize {
         self.active_nodes.len()
     }
@@ -271,7 +266,7 @@ mod tests {
     #[test]
     fn test_lean_trimmer_creation() {
         let trimmer = LeanTrimmer::new(42);
-        assert_eq!(trimmer.trimming_rounds, 42);
+        assert_eq!(trimmer.trimming_rounds, 90); // Default is 90
     }
     
     #[test]

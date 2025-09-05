@@ -5,7 +5,7 @@
 
 use cuckatoo_core::{
     Config, TrimmingMode, CycleVerifier, LeanTrimmer, 
-    hashing::generate_edges
+    hashing::{generate_edges, SipHash}
 };
 use std::time::Instant;
 use std::env;
@@ -60,6 +60,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(cycle) => {
                 println!("Found 42-cycle in {:.6}s", verify_time.as_secs_f64());
                 println!("Cycle length: {}", cycle.len());
+                
+                // Print SipHash keys for verification
+                let siphash = SipHash::new();
+                let keys = siphash.get_key();
+                println!("SipHash keys: [0x{:016x}, 0x{:016x}]", keys[0], keys[1]);
+                
+                // Print cycle edge indices
+                println!("Cycle edge indices:");
+                for (i, edge) in cycle.windows(2).enumerate() {
+                    if let [node1, node2] = edge {
+                        // Find the edge index in the original edges list
+                        if let Some(edge_index) = edges.iter().position(|&e| 
+                            (e.u == *node1 && e.v == *node2) || (e.u == *node2 && e.v == *node1)
+                        ) {
+                            println!("  Edge {}: {} -> {} (index: {})", i, node1, node2, edge_index);
+                        }
+                    }
+                }
+                // Handle the last edge (cycle[last] -> cycle[0])
+                if cycle.len() >= 2 {
+                    let last_node = cycle[cycle.len() - 1];
+                    let first_node = cycle[0];
+                    if let Some(edge_index) = edges.iter().position(|&e| 
+                        (e.u == last_node && e.v == first_node) || (e.u == first_node && e.v == last_node)
+                    ) {
+                        println!("  Edge {}: {} -> {} (index: {})", cycle.len() - 1, last_node, first_node, edge_index);
+                    }
+                }
                 
                 // Verify the cycle is valid
                 if verifier.verify_specific_cycle(&cycle, &survivors) {
