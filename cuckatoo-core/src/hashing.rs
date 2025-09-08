@@ -1,30 +1,28 @@
 //! SipHash-2-4 implementation for Cuckatoo edge generation
+//! Based on the C++ reference miner implementation
 
 use crate::{Edge, Header, Node, Result, CuckatooError};
-use std::collections::HashMap;
+use crate::blake2b::blake2b;
 
 /// SipHash-2-4 implementation for Cuckatoo
 /// 
-/// This implements the same hashing algorithm used in the C++ reference miner
+/// This implements the exact same hashing algorithm used in the C++ reference miner
 /// to generate edges from headers and nonces.
 pub struct SipHash {
-    /// SipHash key (256-bit for Cuckatoo)
+    /// SipHash key (256-bit for Cuckatoo) - generated from Blake2b
     key: [u64; 4],
 }
 
 impl SipHash {
-    /// Create a new SipHash instance with the default Cuckatoo key
-    pub fn new() -> Self {
-        // Default 256-bit key used in Cuckatoo
-        Self {
-            key: [
-                0x736f6d6570736575, 0x646f72616e646f6d,
-                0x6c7967656e657261, 0x7465646279746573
-            ],
-        }
+    /// Create a new SipHash instance with keys generated from header and nonce
+    /// This matches the C++ implementation: blake2b(sipHashKeys, jobHeader, jobNonce)
+    pub fn new_from_header(header: &Header, nonce: u64) -> Self {
+        // Generate SipHash keys using Blake2b, exactly like C++ implementation
+        let key = blake2b(header.as_bytes(), nonce);
+        Self { key }
     }
     
-    /// Create a new SipHash instance with custom key
+    /// Create a new SipHash instance with custom key (for testing)
     pub fn with_key(key: [u64; 4]) -> Self {
         Self { key }
     }
@@ -38,213 +36,170 @@ impl SipHash {
     /// 
     /// This generates 2^edge_bits edges using SipHash-2-4
     /// as specified in the Cuckatoo algorithm.
-    pub fn hash_header(&self, header: &Header, edge_bits: u32) -> Result<Vec<Edge>> {
+    pub fn hash_header(&self, _header: &Header, edge_bits: u32) -> Result<Vec<Edge>> {
         if edge_bits < 10 || edge_bits > 32 {
             return Err(CuckatooError::InvalidEdgeBits(edge_bits));
         }
         
         let edge_count = 1 << edge_bits;
-        let node_count = 1 << (edge_bits - 1);
+        let node_mask = edge_count - 1;
         
         let mut edges = Vec::with_capacity(edge_count as usize);
-        let mut edge_map = HashMap::new();
         
-        // Generate edges using SipHash-2-4 according to Cuckatoo specification
-        for i in 0..edge_count {
-            // V_i_0 = siphash24(K, 2*i) % N
-            let hash_u = self.siphash24(&header.bytes, header.nonce, 2 * i);
-            // V_i_1 = siphash24(K, 2*i+1) % N  
-            let hash_v = self.siphash24(&header.bytes, header.nonce, 2 * i + 1);
+        // Generate edges exactly like C++ implementation
+        for edge_index in 0..edge_count {
+            // Generate nodes using SipHash-2-4 with nonces (edge_index * 2) and (edge_index * 2 + 1)
+            let nonce1 = edge_index * 2;
+            let nonce2 = edge_index * 2 + 1;
             
-            // Extract node indices from the hashes
-            let u = Node::new(hash_u & (node_count - 1));
-            let v = Node::new(hash_v & (node_count - 1));
+            let u = self.siphash24(nonce1, edge_bits, node_mask);
+            let v = self.siphash24(nonce2, edge_bits, node_mask);
             
-            // Ensure u < v for consistent edge representation
-            let edge = if u.value() < v.value() {
-                Edge::new(u, v)
-            } else {
-                Edge::new(v, u)
-            };
-            
-            // Check for duplicate edges (should be rare with good hash)
-            if !edge_map.contains_key(&edge) {
-                edge_map.insert(edge, i);
-                edges.push(edge);
-            }
+            // Create edge connecting U and V partitions (preserve order like C++)
+            let edge = Edge::new(u, v);
+            edges.push(edge);
         }
-        
-        // Sort edges for consistent output
-        edges.sort();
         
         Ok(edges)
     }
     
-    /// Generate a single edge hash
-    pub fn hash_edge(&self, header: &Header, edge_index: u64) -> u64 {
-        self.siphash24(&header.bytes, header.nonce, edge_index)
+    /// SipHash-2-4 implementation matching the C++ version exactly
+    /// 
+    /// This implements the same algorithm as the C++ sipHash24 function
+    fn siphash24(&self, nonce: u64, edge_bits: u32, node_mask: u64) -> Node {
+        // Initialize states with keys (like C++: states[i] += keys[i])
+        let mut states = self.key;
+        
+        // Perform hash on states (exactly like C++ implementation)
+        states[3] ^= nonce;
+        self.sip_round(&mut states);
+        self.sip_round(&mut states);
+        states[0] ^= nonce;
+        states[2] ^= 255;
+        self.sip_round(&mut states);
+        self.sip_round(&mut states);
+        self.sip_round(&mut states);
+        self.sip_round(&mut states);
+        
+        // Get node from states (like C++: *nodes = (states[0] ^ states[1] ^ states[2] ^ states[3]) & NODE_MASK)
+        let node_value = if edge_bits == 32 {
+            states[0] ^ states[1] ^ states[2] ^ states[3]
+        } else {
+            (states[0] ^ states[1] ^ states[2] ^ states[3]) & node_mask
+        };
+        
+        Node::new(node_value)
     }
     
-    /// Core SipHash-2-4 implementation
-    fn siphash24(&self, data: &[u8], nonce: u64, edge_index: u64) -> u64 {
-        let mut v0 = self.key[0];
-        let mut v1 = self.key[1];
-        let mut v2 = self.key[2];
-        let mut v3 = self.key[3];
+    /// SipRound implementation matching the C++ version exactly
+    /// 
+    /// This implements the same algorithm as the C++ sipRound function
+    fn sip_round(&self, states: &mut [u64; 4]) {
+        // Perform SipRound on states (exactly like C++ implementation)
+        // C++: states[0] += states[1];
+        states[0] = states[0].wrapping_add(states[1]);
         
-        // XOR with nonce and edge index
-        v3 ^= nonce;
-        v2 ^= edge_index;
+        // C++: states[2] += states[3];
+        states[2] = states[2].wrapping_add(states[3]);
         
-        // Process data in 8-byte chunks
-        let mut i = 0;
-        while i + 8 <= data.len() {
-            let m = u64::from_le_bytes([
-                data[i], data[i + 1], data[i + 2], data[i + 3],
-                data[i + 4], data[i + 5], data[i + 6], data[i + 7],
-            ]);
-            
-            v3 ^= m;
-            self.sip_round(&mut v0, &mut v1, &mut v2, &mut v3);
-            self.sip_round(&mut v0, &mut v1, &mut v2, &mut v3);
-            v0 ^= m;
-            
-            i += 8;
-        }
+        // C++: states[1] = (states[1] << 13) | (states[1] >> (64 - 13));
+        states[1] = states[1].rotate_left(13);
         
-        // Handle remaining bytes
-        let mut m = 0u64;
-        let mut shift = 0;
-        for &byte in &data[i..] {
-            m |= (byte as u64) << shift;
-            shift += 8;
-        }
+        // C++: states[3] = (states[3] << 16) | (states[3] >> (64 - 16));
+        states[3] = states[3].rotate_left(16);
         
-        // Finalize with edge index
-        m |= (edge_index & 0xFF) << 56;
+        // C++: states[1] ^= states[0];
+        states[1] ^= states[0];
         
-        v3 ^= m;
-        self.sip_round(&mut v0, &mut v1, &mut v2, &mut v3);
-        self.sip_round(&mut v0, &mut v1, &mut v2, &mut v3);
-        v0 ^= m;
+        // C++: states[3] ^= states[2];
+        states[3] ^= states[2];
         
-        // Finalization
-        v2 ^= 0xff;
-        self.sip_round(&mut v0, &mut v1, &mut v2, &mut v3);
-        self.sip_round(&mut v0, &mut v1, &mut v2, &mut v3);
-        self.sip_round(&mut v0, &mut v1, &mut v2, &mut v3);
-        self.sip_round(&mut v0, &mut v1, &mut v2, &mut v3);
+        // C++: states[0] = (states[0] << 32) | (states[0] >> (64 - 32));
+        states[0] = states[0].rotate_left(32);
         
-        v0 ^ v1 ^ v2 ^ v3
-    }
-    
-    /// Single SipHash round
-    fn sip_round(&self, v0: &mut u64, v1: &mut u64, v2: &mut u64, v3: &mut u64) {
-        *v0 = v0.wrapping_add(*v1);
-        *v2 = v2.wrapping_add(*v3);
-        *v1 = v1.rotate_left(13);
-        *v3 = v3.rotate_left(16);
-        *v1 ^= *v0;
-        *v3 ^= *v2;
-        *v0 = v0.rotate_left(32);
-        *v2 = v2.wrapping_add(*v1);
-        *v0 = v0.wrapping_add(*v3);
-        *v1 = v1.rotate_left(17);
-        *v3 = v3.rotate_left(21);
-        *v1 ^= *v2;
-        *v3 ^= *v0;
-        *v2 = v2.rotate_left(32);
+        // C++: states[2] += states[1];
+        states[2] = states[2].wrapping_add(states[1]);
+        
+        // C++: states[0] += states[3];
+        states[0] = states[0].wrapping_add(states[3]);
+        
+        // C++: states[1] = (states[1] << 17) | (states[1] >> (64 - 17));
+        states[1] = states[1].rotate_left(17);
+        
+        // C++: states[3] = (states[3] << SIP_ROUND_ROTATION) | (states[3] >> (64 - SIP_ROUND_ROTATION));
+        // SIP_ROUND_ROTATION = 21
+        states[3] = states[3].rotate_left(21);
+        
+        // C++: states[1] ^= states[2];
+        states[1] ^= states[2];
+        
+        // C++: states[3] ^= states[0];
+        states[3] ^= states[0];
+        
+        // C++: states[2] = (states[2] << 32) | (states[2] >> (64 - 32));
+        states[2] = states[2].rotate_left(32);
     }
 }
 
 impl Default for SipHash {
     fn default() -> Self {
-        Self::new()
+        // Default key for testing (should not be used in production)
+        Self {
+            key: [
+                0x736f6d6570736575, 0x646f72616e646f6d,
+                0x6c7967656e657261, 0x7465646279746573
+            ],
+        }
     }
-}
-
-/// Generate edges from header bytes and nonce using SipHash-2-4
-/// 
-/// This is a convenience function that creates a SipHash instance
-/// and generates edges for the given parameters.
-pub fn generate_edges(header_bytes: &[u8], nonce: u64, edge_bits: u32) -> Result<Vec<Edge>> {
-    let hasher = SipHash::new();
-    let header = Header::new(header_bytes.to_vec(), nonce);
-    hasher.hash_header(&header, edge_bits)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
-    fn test_siphash_creation() {
-        let hasher = SipHash::new();
-        assert_eq!(hasher.key[0], 0x736f6d6570736575);
-        assert_eq!(hasher.key[1], 0x646f72616e646f6d);
-    }
-    
-    #[test]
-    fn test_siphash_custom_key() {
-        let key = [0x1234567890abcdef, 0xfedcba0987654321, 0x1111111111111111, 0x2222222222222222];
-        let hasher = SipHash::with_key(key);
-        assert_eq!(hasher.key, key);
-    }
-    
-    #[test]
-    fn test_edge_generation_small() {
-        let hasher = SipHash::new();
-        let header = Header::new(b"test header".to_vec(), 42);
+    fn test_siphash_basic() {
+        let header = Header::new(b"test header");
+        let siphash = SipHash::new_from_header(&header, 12345);
         
-        // Test with small edge bits (should work)
-        let result = hasher.hash_header(&header, 12);
-        assert!(result.is_ok());
+        // Test that we can generate edges
+        let edges = siphash.hash_header(&header, 10).unwrap();
+        assert_eq!(edges.len(), 1024); // 2^10
         
-        let edges = result.unwrap();
-        assert!(edges.len() > 4000); // Should have most of the 4096 edges (some duplicates filtered)
-        
-        // Check that edges are sorted and unique
-        for i in 1..edges.len() {
-            assert!(edges[i-1] <= edges[i]);
+        // Test that edges have valid nodes
+        for edge in &edges {
+            assert!(edge.u.value() < 1024);
+            assert!(edge.v.value() < 1024);
         }
     }
     
     #[test]
-    fn test_edge_generation_invalid_bits() {
-        let hasher = SipHash::new();
-        let header = Header::new(b"test header".to_vec(), 42);
+    fn test_siphash_consistency() {
+        let header = Header::new(b"test header");
+        let siphash1 = SipHash::new_from_header(&header, 12345);
+        let siphash2 = SipHash::new_from_header(&header, 12345);
         
-        // Test with invalid edge bits
-        assert!(hasher.hash_header(&header, 9).is_err());
-        assert!(hasher.hash_header(&header, 33).is_err());
+        // Same header and nonce should produce same keys
+        assert_eq!(siphash1.get_key(), siphash2.get_key());
+        
+        // Same keys should produce same edges
+        let edges1 = siphash1.hash_header(&header, 10).unwrap();
+        let edges2 = siphash2.hash_header(&header, 10).unwrap();
+        assert_eq!(edges1, edges2);
     }
     
     #[test]
-    fn test_single_edge_hash() {
-        let hasher = SipHash::new();
-        let header = Header::new(b"test header".to_vec(), 42);
+    fn test_siphash_different_nonces() {
+        let header = Header::new(b"test header");
+        let siphash1 = SipHash::new_from_header(&header, 12345);
+        let siphash2 = SipHash::new_from_header(&header, 12346);
         
-        let hash1 = hasher.hash_edge(&header, 0);
-        let hash2 = hasher.hash_edge(&header, 1);
+        // Different nonces should produce different keys
+        assert_ne!(siphash1.get_key(), siphash2.get_key());
         
-        // Different edge indices should produce different hashes
-        assert_ne!(hash1, hash2);
-        
-        // Same inputs should produce same hash
-        let hash1_again = hasher.hash_edge(&header, 0);
-        assert_eq!(hash1, hash1_again);
-    }
-    
-    #[test]
-    fn test_generate_edges_function() {
-        let header_bytes = b"test header";
-        let nonce = 42;
-        let edge_bits = 12;
-        
-        let result = generate_edges(header_bytes, nonce, edge_bits);
-        assert!(result.is_ok());
-        
-        let edges = result.unwrap();
-        assert!(edges.len() > 4000); // Should have most of the 4096 edges (some duplicates filtered)
+        // Different keys should produce different edges
+        let edges1 = siphash1.hash_header(&header, 10).unwrap();
+        let edges2 = siphash2.hash_header(&header, 10).unwrap();
+        assert_ne!(edges1, edges2);
     }
 }

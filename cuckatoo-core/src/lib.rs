@@ -8,13 +8,24 @@
 
 pub mod types;
 pub mod hashing;
+pub mod blake2b;
 pub mod trimming;
+pub mod bitmap_trimming;
+pub mod hash_cycle_finder;
+// pub mod cpp_cycle_finder; // Temporarily disabled due to complex borrowing issues
+pub mod exact_siphash;
+pub mod exact_trimming;
 pub mod verification;
 pub mod timing;
 
 pub use types::*;
 pub use hashing::*;
+pub use blake2b::*;
 pub use trimming::*;
+pub use bitmap_trimming::*;
+pub use hash_cycle_finder::*;
+pub use exact_siphash::*;
+pub use exact_trimming::*;
 pub use verification::*;
 pub use timing::*;
 

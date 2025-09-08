@@ -2,6 +2,13 @@
 
 use std::fmt;
 
+// Constants matching C++ implementation
+/// Solution size (42-cycle)
+pub const SOLUTION_SIZE: usize = 42;
+
+/// Edge number of components (C++ uses 3: [edge_index, node_u, node_v])
+pub const EDGE_NUMBER_OF_COMPONENTS: usize = 3;
+
 /// Edge in the Cuckatoo graph
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Edge {
@@ -44,6 +51,22 @@ impl fmt::Display for Edge {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Node(pub u64);
 
+impl std::ops::BitXor<u64> for Node {
+    type Output = Node;
+    
+    fn bitxor(self, rhs: u64) -> Self::Output {
+        Node(self.0 ^ rhs)
+    }
+}
+
+impl std::ops::BitXor<u64> for &Node {
+    type Output = Node;
+    
+    fn bitxor(self, rhs: u64) -> Self::Output {
+        Node(self.0 ^ rhs)
+    }
+}
+
 impl Node {
     /// Create a new node
     pub fn new(value: u64) -> Self {
@@ -72,13 +95,29 @@ pub struct Header {
 }
 
 impl Header {
-    /// Create a new header
-    pub fn new(bytes: Vec<u8>, nonce: u64) -> Self {
-        Self { bytes, nonce }
+    /// Create a new header from bytes
+    pub fn new(bytes: &[u8]) -> Self {
+        Self { 
+            bytes: bytes.to_vec(), 
+            nonce: 0 
+        }
+    }
+    
+    /// Create a new header with bytes and nonce
+    pub fn new_with_nonce(bytes: &[u8], nonce: u64) -> Self {
+        Self { 
+            bytes: bytes.to_vec(), 
+            nonce 
+        }
     }
     
     /// Get header bytes
     pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+    
+    /// Get header bytes as slice (alias for bytes)
+    pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
     }
     
@@ -106,7 +145,17 @@ impl Config {
     pub fn new(edge_bits: u32) -> Self {
         Self {
             edge_bits,
-            trimming_rounds: 90, // Default from C++ miner
+            trimming_rounds: 90, // Default from C++ Makefile
+            mode: TrimmingMode::Lean,
+            tuning: false,
+        }
+    }
+    
+    /// Create a new configuration with C++ Makefile defaults
+    pub fn new_cuckatoo31() -> Self {
+        Self {
+            edge_bits: 31, // From C++ Makefile: EDGE_BITS = 31
+            trimming_rounds: 90, // From C++ Makefile: TRIMMING_ROUNDS = 90
             mode: TrimmingMode::Lean,
             tuning: false,
         }
